@@ -279,7 +279,14 @@ func (srv *Server) Wait() error {
 
 // Address returns the listening address of the server
 func (srv *Server) Address() net.Addr {
-	return (*srv.listener).Addr();
+	return (*srv.listener).Addr()
+}
+
+// Connections returns the number of active sessions of the server
+func (srv *Server) Connections() int {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	return len(srv.sessions)
 }
 
 func (srv *Server) configureDefaults() {
@@ -457,7 +464,6 @@ func (session *session) close() {
 	time.Sleep(200 * time.Millisecond)
 	session.conn.Close()
 }
-
 
 // From net/http/server.go
 
