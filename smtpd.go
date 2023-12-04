@@ -45,6 +45,9 @@ type Server struct {
 	// Can be left empty for no authentication support.
 	Authenticator func(peer Peer, username, password string) error
 
+	// Get notified when a connection was closed.
+	ConnectionClosed func(peer Peer)
+
 	EnableXCLIENT       bool // Enable XCLIENT support (default: false)
 	EnableProxyProtocol bool // Enable proxy protocol support (default: false)
 
@@ -55,11 +58,12 @@ type Server struct {
 
 	// mu guards doneChan and makes closing it and listener atomic from
 	// perspective of Serve()
-	mu sync.Mutex
-	doneChan chan struct{}
-	listener *net.Listener
-	waitgrp sync.WaitGroup
+	mu         sync.Mutex
+	doneChan   chan struct{}
+	listener   *net.Listener
+	waitgrp    sync.WaitGroup
 	inShutdown atomicBool // true when server is in shutdown
+	sessions   []*session
 }
 
 // Protocol represents the protocol used in the SMTP session
@@ -143,8 +147,27 @@ func (srv *Server) newSession(c net.Conn) (s *session) {
 
 	s.scanner = bufio.NewScanner(s.reader)
 
+	srv.mu.Lock()
+	srv.sessions = append(srv.sessions, s)
+	srv.mu.Unlock()
+
 	return
 
+}
+
+func (srv *Server) removeSession(s *session) {
+	srv.mu.Lock()
+	for i, session := range srv.sessions {
+		if session == s {
+			srv.sessions = append(srv.sessions[:i], srv.sessions[i+1:]...)
+			break
+		}
+	}
+	srv.mu.Unlock()
+
+	if s.server.ConnectionClosed != nil {
+		s.server.ConnectionClosed(s.peer)
+	}
 }
 
 // ListenAndServe starts the SMTP server and listens on the address provided
@@ -202,6 +225,8 @@ func (srv *Server) Serve(l net.Listener) error {
 		srv.waitgrp.Add(1)
 		go func() {
 			defer srv.waitgrp.Done()
+			defer srv.removeSession(session)
+
 			if limiter != nil {
 				select {
 				case limiter <- struct{}{}:
