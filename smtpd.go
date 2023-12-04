@@ -253,14 +253,19 @@ func (srv *Server) Shutdown(wait bool) error {
 	// First close the listener
 	srv.mu.Lock()
 	if srv.listener != nil {
-		lnerr = (*srv.listener).Close();
+		lnerr = (*srv.listener).Close()
 	}
 	srv.closeDoneChanLocked()
 	srv.mu.Unlock()
 
-	// Now wait for all client connections to close
 	if wait {
+		// Now wait for all client connections to close
 		srv.Wait()
+	} else {
+		// Close all sessions
+		for _, session := range srv.sessions {
+			session.close()
+		}
 	}
 
 	return lnerr
