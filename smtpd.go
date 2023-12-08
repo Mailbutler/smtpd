@@ -43,7 +43,8 @@ type Server struct {
 
 	// Enable PLAIN/LOGIN authentication, only available after STARTTLS.
 	// Can be left empty for no authentication support.
-	Authenticator func(peer Peer, username, password string) error
+	Authenticator                   func(peer Peer, username, password string) error
+	AuthenticatorAllowEmptyUsername bool // Call Authenticator function even if the username was empty
 
 	// Get notified when a connection was closed.
 	ConnectionClosed func(peer Peer)

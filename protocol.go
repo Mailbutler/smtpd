@@ -202,7 +202,7 @@ func (session *session) handleMAIL(cmd command) {
 		return
 	}
 
-	if session.server.Authenticator != nil && session.peer.Username == "" {
+	if session.server.Authenticator != nil && session.peer.Username == "" && !session.server.AuthenticatorAllowEmptyUsername {
 		session.reply(530, "Authentication Required.")
 		return
 	}
