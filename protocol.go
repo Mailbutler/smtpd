@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/textproto"
 	"strconv"
@@ -502,6 +503,36 @@ func (session *session) handleAUTH(cmd command) {
 		username = string(byteUsername)
 		password = string(bytePassword)
 
+	case "CRAM-MD5":
+
+		randDigits := fmt.Sprintf("%08d", rand.Intn(100000000))
+		challenge := fmt.Sprintf("<%v.%v@%v>", randDigits, time.Now().UnixNano(), session.server.Hostname)
+		encodedChallenge := base64.StdEncoding.EncodeToString([]byte(challenge))
+
+		session.reply(334, encodedChallenge)
+		if !session.scanner.Scan() {
+			return
+		}
+
+		response := session.scanner.Text()
+		decodedResponse, err := base64.StdEncoding.DecodeString(response)
+
+		if err != nil {
+			session.reply(502, "Couldn't decode your credentials")
+			return
+		}
+
+		parts := bytes.Split(decodedResponse, []byte(" "))
+
+		if len(parts) != 2 {
+			session.reply(502, "Couldn't decode your credentials")
+			return
+		}
+
+		username = string(parts[0])
+		password = response
+		session.peer.CramMd5Challenge = encodedChallenge
+
 	default:
 
 		session.logf("unknown authentication mechanism: %s", mechanism)
@@ -512,6 +543,7 @@ func (session *session) handleAUTH(cmd command) {
 
 	err := session.server.Authenticator(session.peer, username, password)
 	if err != nil {
+		session.peer.CramMd5Challenge = ""
 		session.error(err)
 		return
 	}

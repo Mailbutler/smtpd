@@ -45,6 +45,7 @@ type Server struct {
 	// Can be left empty for no authentication support.
 	Authenticator                   func(peer Peer, username, password string) error
 	AuthenticatorAllowEmptyUsername bool // Call Authenticator function even if the username was empty
+	EnableCramMd5                   bool // Enable CRAM-MD5 AUTH support (default: false)
 
 	// Get notified when a connection was closed.
 	ConnectionClosed func(peer Peer)
@@ -80,13 +81,14 @@ const (
 
 // Peer represents the client connecting to the server
 type Peer struct {
-	HeloName   string               // Server name used in HELO/EHLO command
-	Username   string               // Username from authentication, if authenticated
-	Password   string               // Password from authentication, if authenticated
-	Protocol   Protocol             // Protocol used, SMTP or ESMTP
-	ServerName string               // A copy of Server.Hostname
-	Addr       net.Addr             // Network address
-	TLS        *tls.ConnectionState // TLS Connection details, if on TLS
+	HeloName         string               // Server name used in HELO/EHLO command
+	Username         string               // Username from authentication, if authenticated
+	Password         string               // Password / CRAM-MD5 challenge response from authentication, if authenticated
+	CramMd5Challenge string               // Server challenge for authenticating via CRAM-MD5
+	Protocol         Protocol             // Protocol used, SMTP or ESMTP
+	ServerName       string               // A copy of Server.Hostname
+	Addr             net.Addr             // Network address
+	TLS              *tls.ConnectionState // TLS Connection details, if on TLS
 }
 
 // Error represents an Error reported in the SMTP session.
@@ -451,7 +453,11 @@ func (session *session) extensions() []string {
 	}
 
 	if session.server.Authenticator != nil && session.tls {
-		extensions = append(extensions, "AUTH PLAIN LOGIN")
+		authSchemes := []string{"PLAIN", "LOGIN"}
+		if session.server.EnableCramMd5 {
+			authSchemes = append(authSchemes, "CRAM-MD5")
+		}
+		extensions = append(extensions, "AUTH "+strings.Join(authSchemes, " "))
 	}
 
 	return extensions
