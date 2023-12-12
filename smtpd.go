@@ -80,13 +80,14 @@ const (
 
 // Peer represents the client connecting to the server
 type Peer struct {
-	HeloName   string               // Server name used in HELO/EHLO command
-	Username   string               // Username from authentication, if authenticated
-	Password   string               // Password from authentication, if authenticated
-	Protocol   Protocol             // Protocol used, SMTP or ESMTP
-	ServerName string               // A copy of Server.Hostname
-	Addr       net.Addr             // Network address
-	TLS        *tls.ConnectionState // TLS Connection details, if on TLS
+	HeloName         string               // Server name used in HELO/EHLO command
+	Username         string               // Username from authentication, if authenticated
+	Password         string               // Password / CRAM-MD5 challenge response from authentication, if authenticated
+	CramMd5Challenge string               // Server challenge for authenticating via CRAM-MD5
+	Protocol         Protocol             // Protocol used, SMTP or ESMTP
+	ServerName       string               // A copy of Server.Hostname
+	Addr             net.Addr             // Network address
+	TLS              *tls.ConnectionState // TLS Connection details, if on TLS
 }
 
 // Error represents an Error reported in the SMTP session.
@@ -451,7 +452,7 @@ func (session *session) extensions() []string {
 	}
 
 	if session.server.Authenticator != nil && session.tls {
-		extensions = append(extensions, "AUTH PLAIN LOGIN")
+		extensions = append(extensions, "AUTH PLAIN LOGIN CRAM-MD5")
 	}
 
 	return extensions
