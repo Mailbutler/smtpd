@@ -44,7 +44,7 @@ type Server struct {
 	// Enable PLAIN/LOGIN authentication, only available after STARTTLS.
 	// Can be left empty for no authentication support.
 	Authenticator                   func(peer Peer, username, password string) error
-	AuthenticatorAllowEmptyUsername bool // Call Authenticator function even if the username was empty
+	AuthenticatorBypassVerification bool // Call Authenticator function regardless of the given credentials (unsafe!) (default: false)
 	EnableCramMd5                   bool // Enable CRAM-MD5 AUTH support (default: false)
 
 	// Get notified when a connection was closed.

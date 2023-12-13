@@ -203,7 +203,7 @@ func (session *session) handleMAIL(cmd command) {
 		return
 	}
 
-	if session.server.Authenticator != nil && session.peer.Username == "" && !session.server.AuthenticatorAllowEmptyUsername {
+	if session.server.Authenticator != nil && session.peer.Username == "" && !session.server.AuthenticatorBypassVerification {
 		session.reply(530, "Authentication Required.")
 		return
 	}
@@ -428,6 +428,7 @@ func (session *session) handleAUTH(cmd command) {
 		return
 	}
 
+	bypassVerification := session.server.AuthenticatorBypassVerification
 	mechanism := strings.ToUpper(cmd.fields[1])
 
 	username := ""
@@ -449,22 +450,24 @@ func (session *session) handleAUTH(cmd command) {
 			auth = cmd.fields[2]
 		}
 
-		data, err := base64.StdEncoding.DecodeString(auth)
+		if !bypassVerification {
+			data, err := base64.StdEncoding.DecodeString(auth)
 
-		if err != nil {
-			session.reply(502, "Couldn't decode your credentials")
-			return
+			if err != nil {
+				session.reply(502, "Couldn't decode your credentials")
+				return
+			}
+
+			parts := bytes.Split(data, []byte{0})
+
+			if len(parts) != 3 {
+				session.reply(502, "Couldn't decode your credentials")
+				return
+			}
+
+			username = string(parts[1])
+			password = string(parts[2])
 		}
-
-		parts := bytes.Split(data, []byte{0})
-
-		if len(parts) != 3 {
-			session.reply(502, "Couldn't decode your credentials")
-			return
-		}
-
-		username = string(parts[1])
-		password = string(parts[2])
 
 	case "LOGIN":
 
@@ -482,7 +485,7 @@ func (session *session) handleAUTH(cmd command) {
 
 		byteUsername, err := base64.StdEncoding.DecodeString(encodedUsername)
 
-		if err != nil {
+		if err != nil && !bypassVerification {
 			session.reply(502, "Couldn't decode your credentials")
 			return
 		}
@@ -495,7 +498,7 @@ func (session *session) handleAUTH(cmd command) {
 
 		bytePassword, err := base64.StdEncoding.DecodeString(session.scanner.Text())
 
-		if err != nil {
+		if err != nil && !bypassVerification {
 			session.reply(502, "Couldn't decode your credentials")
 			return
 		}
@@ -508,6 +511,8 @@ func (session *session) handleAUTH(cmd command) {
 		randDigits := fmt.Sprintf("%08d", rand.Intn(100000000))
 		challenge := fmt.Sprintf("<%v.%v@%v>", randDigits, time.Now().UnixNano(), session.server.Hostname)
 		encodedChallenge := base64.StdEncoding.EncodeToString([]byte(challenge))
+		session.peer.CramMd5Challenge = encodedChallenge
+		defer session.clearCramMd5Challenge()
 
 		session.reply(334, encodedChallenge)
 		if !session.scanner.Scan() {
@@ -515,23 +520,24 @@ func (session *session) handleAUTH(cmd command) {
 		}
 
 		response := session.scanner.Text()
-		decodedResponse, err := base64.StdEncoding.DecodeString(response)
-
-		if err != nil {
-			session.reply(502, "Couldn't decode your credentials")
-			return
-		}
-
-		parts := bytes.Split(decodedResponse, []byte(" "))
-
-		if len(parts) != 2 {
-			session.reply(502, "Couldn't decode your credentials")
-			return
-		}
-
-		username = string(parts[0])
 		password = response
-		session.peer.CramMd5Challenge = encodedChallenge
+
+		if !bypassVerification {
+			decodedResponse, err := base64.StdEncoding.DecodeString(response)
+
+			if err != nil {
+				session.reply(502, "Couldn't decode your credentials")
+				return
+			}
+
+			parts := bytes.Split(decodedResponse, []byte(" "))
+
+			if len(parts) != 2 {
+				session.reply(502, "Couldn't decode your credentials")
+				return
+			}
+			username = string(parts[0])
+		}
 
 	default:
 
@@ -699,4 +705,8 @@ func (session *session) handlePROXY(cmd command) {
 
 	session.welcome()
 
+}
+
+func (session *session) clearCramMd5Challenge() {
+	session.peer.CramMd5Challenge = ""
 }
